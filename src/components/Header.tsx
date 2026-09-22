@@ -13,6 +13,7 @@ import {
   Shield,
   UserCheck,
   UserCog,
+  Award,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -38,8 +39,9 @@ export const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
   };
 
   const isAdmin = role === 'admin';
+  const isExaminadora = role === 'examinadora' || role === 'examinador';
   const isInstrutora = role === 'instrutora' || role === 'instrutor' || role === 'professor';
-  const isStaff = isAdmin || isInstrutora;
+  const isStaff = isAdmin || isExaminadora || isInstrutora;
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-2xs transition-colors duration-200">
@@ -239,6 +241,10 @@ export const Header: React.FC<HeaderProps> = ({ theme, onToggleTheme }) => {
                     {isAdmin ? (
                       <span className="text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5">
                         <Shield className="w-2.5 h-2.5" /> Administradora
+                      </span>
+                    ) : isExaminadora ? (
+                      <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-0.5">
+                        <Award className="w-2.5 h-2.5" /> Examinadora
                       </span>
                     ) : isInstrutora ? (
                       <span className="text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-0.5">

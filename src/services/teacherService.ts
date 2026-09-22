@@ -15,7 +15,13 @@ export async function listTeachers(): Promise<UsuarioDoc[]> {
 
   snap.forEach((d) => {
     const data = d.data() as UsuarioDoc;
-    if (data.role === 'instrutora' || data.role === 'instrutor' || data.role === 'professor') {
+    if (
+      data.role === 'instrutora' ||
+      data.role === 'instrutor' ||
+      data.role === 'professor' ||
+      data.role === 'examinadora' ||
+      data.role === 'examinador'
+    ) {
       teachers.push({
         ...data,
         uid: d.id,

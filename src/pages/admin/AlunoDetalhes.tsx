@@ -43,11 +43,13 @@ import {
   listStudentMethodLessons,
   saveStudentMethodLesson,
   deleteStudentMethodLesson,
+  listAllAvailableMethods,
 } from '../../services/metodoService';
 import type {
   AlunoMetodoProgressoDoc,
   MetodoLicaoDoc,
   MetodoLicaoStatus,
+  MetodoCadastradoDoc,
 } from '../../types/metodo';
 import type { UsuarioDoc, HinoProgressoDoc, StatusProgresso } from '../../types/auth';
 
@@ -92,7 +94,11 @@ export const AlunoDetalhes: React.FC = () => {
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
   const [editingMsaDates, setEditingMsaDates] = useState<Record<string, string>>({});
 
-  // Organ Method State (Volumes 1 ao 4)
+  // Organ Method State (Oficial CCB + Cadastrados)
+  const [availableMethods, setAvailableMethods] = useState<MetodoCadastradoDoc[]>([]);
+  const [selectedMethodId, setSelectedMethodId] = useState<string>('metodo_oficial_orgao_ccb');
+  const [filtroMetodoLicoes, setFiltroMetodoLicoes] = useState<string>('todos');
+
   const [, setMethodDoc] = useState<AlunoMetodoProgressoDoc | null>(null);
   const [selectedVolumeNum, setSelectedVolumeNum] = useState<number>(1);
   const [posicaoMetodo, setPosicaoMetodo] = useState('Vol. 1 - Página 1, Lição 1');
@@ -142,12 +148,15 @@ export const AlunoDetalhes: React.FC = () => {
     const fetchAll = async () => {
       setLoading(true);
       try {
-        const [studentData, instructorsData] = await Promise.all([
+        const [studentData, instructorsData, methodsCatalog] = await Promise.all([
           getStudentById(id),
           listTeachers(),
+          listAllAvailableMethods(),
         ]);
         setInstructors(instructorsData);
         setStudent(studentData);
+        setAvailableMethods(methodsCatalog);
+
         if (studentData) {
           setSelectedInstructorId(studentData.instrutorId || '');
 
@@ -160,12 +169,14 @@ export const AlunoDetalhes: React.FC = () => {
 
           if (methodProgressData) {
             setMethodDoc(methodProgressData);
+            setSelectedMethodId(methodProgressData.metodoId || 'metodo_oficial_orgao_ccb');
             setSelectedVolumeNum(methodProgressData.volumeAtual || 1);
             setPosicaoMetodo(methodProgressData.posicaoAtual || 'Vol. 1 - Página 1, Lição 1');
             setProgressoMetodo(methodProgressData.progressoPercent || 0);
             setEstagiosAptos(methodProgressData.estagiosAptos || { rjm: false, culto: false, oficializacao: false });
             setObservacoesMetodo(methodProgressData.observacoesInstrutor || '');
           } else {
+            setSelectedMethodId('metodo_oficial_orgao_ccb');
             setSelectedVolumeNum(1);
             setPosicaoMetodo('Vol. 1 - Página 1, Lição 1');
             setProgressoMetodo(0);
@@ -237,20 +248,28 @@ export const AlunoDetalhes: React.FC = () => {
     }
   };
 
-  // Save Organ Method General Settings & Aptitude
+  // Save Method General Settings & Aptitude
   const handleSaveMethod = async () => {
     if (!student) return;
     setSavingMetodo(true);
     setFeedbackMetodo(null);
 
-    const volumeDef = METODOS_ORGANISTA_DATA.find((v) => v.volume === selectedVolumeNum) || METODOS_ORGANISTA_DATA[0];
+    const activeMethodDoc = availableMethods.find((m) => m.id === selectedMethodId) || availableMethods[0];
+    const isOficial = activeMethodDoc ? activeMethodDoc.isOficial : true;
+    const volumeDef = isOficial
+      ? (METODOS_ORGANISTA_DATA.find((v) => v.volume === selectedVolumeNum) || METODOS_ORGANISTA_DATA[0])
+      : null;
+
+    const finalMetodoId = isOficial ? (volumeDef?.id || 'metodo_oficial_orgao_ccb') : (activeMethodDoc?.id || selectedMethodId);
+    const finalMetodoNome = isOficial ? (volumeDef?.nome || 'Método de Estudos para Órgão Eletrônico CCB') : (activeMethodDoc?.nome || 'Método Complementar');
+    const finalVolume = isOficial ? (volumeDef?.volume || 1) : 1;
 
     try {
       const updated = await updateStudentMethodProgress(student.uid, {
         instrumentoNome: 'Órgão Eletrônico (Dó)',
-        metodoId: volumeDef.id,
-        metodoNome: volumeDef.nome,
-        volumeAtual: volumeDef.volume,
+        metodoId: finalMetodoId,
+        metodoNome: finalMetodoNome,
+        volumeAtual: finalVolume,
         posicaoAtual: posicaoMetodo,
         progressoPercent: progressoMetodo,
         estagiosAptos,
@@ -264,16 +283,16 @@ export const AlunoDetalhes: React.FC = () => {
         prev
           ? {
               ...prev,
-              metodoNome: volumeDef.nome,
+              metodoNome: finalMetodoNome,
               metodoPosicao: posicaoMetodo,
               metodoProgresso: progressoMetodo,
               metodoEstagioApto: stageApto,
-              volumeMetodoAtual: volumeDef.volume,
+              volumeMetodoAtual: finalVolume,
             }
           : null
       );
 
-      setFeedbackMetodo({ type: 'success', text: 'Configuração e marcos do método de órgão salvos com sucesso!' });
+      setFeedbackMetodo({ type: 'success', text: `Configuração do método "${finalMetodoNome}" salva com sucesso!` });
       setTimeout(() => setFeedbackMetodo(null), 3500);
     } catch (err: any) {
       console.error(err);
@@ -283,22 +302,26 @@ export const AlunoDetalhes: React.FC = () => {
     }
   };
 
-  // Add / Register new lesson (Volume + Página + Lição)
+  // Add / Register new lesson (for selected method)
   const handleAddMethodLesson = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!student) return;
-    const vol = Number(novoVolume) || 1;
+
+    const activeMethodDoc = availableMethods.find((m) => m.id === selectedMethodId) || availableMethods[0];
+    const isOficial = activeMethodDoc ? activeMethodDoc.isOficial : true;
+    const vol = isOficial ? (Number(novoVolume) || 1) : 1;
     const pag = Math.max(1, Number(novaPagina) || 1);
     const lic = Math.max(1, Number(novaLicao) || 1);
 
-    const volumeDef = METODOS_ORGANISTA_DATA.find((v) => v.volume === vol) || METODOS_ORGANISTA_DATA[0];
+    const metodoId = activeMethodDoc ? activeMethodDoc.id : 'metodo_oficial_orgao_ccb';
+    const metodoNome = activeMethodDoc ? activeMethodDoc.nome : 'Método de Estudos para Órgão Eletrônico CCB';
 
     setAdicionandoLicao(true);
     try {
       await saveStudentMethodLesson(student.uid, {
         volume: vol,
-        metodoId: volumeDef.id,
-        metodoNome: volumeDef.nome,
+        metodoId,
+        metodoNome,
         numeroPagina: pag,
         numeroLicao: lic,
         titulo: novoTituloLicao,
@@ -331,7 +354,7 @@ export const AlunoDetalhes: React.FC = () => {
       setNovaLicao(lic + 1);
       setFeedbackMetodo({
         type: 'success',
-        text: `Lição do Volume ${vol} • Página ${pag} • Lição ${lic} registrada com sucesso!`,
+        text: `Lição de "${metodoNome}" (Pág. ${pag}, Lição ${lic}) registrada com sucesso!`,
       });
       setTimeout(() => setFeedbackMetodo(null), 3500);
     } catch (err: any) {
@@ -582,6 +605,9 @@ export const AlunoDetalhes: React.FC = () => {
   // Filtered Method Lessons
   const metodoLicoesFiltradas = useMemo(() => {
     return metodoLessons.filter((l) => {
+      if (filtroMetodoLicoes !== 'todos') {
+        if (l.metodoId !== filtroMetodoLicoes) return false;
+      }
       if (filtroVolumeMetodo !== 'todos') {
         if ((l.volume || 1) !== Number(filtroVolumeMetodo)) return false;
       }
@@ -593,7 +619,20 @@ export const AlunoDetalhes: React.FC = () => {
       }
       return true;
     });
-  }, [metodoLessons, filtroVolumeMetodo, filtroStatusMetodoLicoes]);
+  }, [metodoLessons, filtroMetodoLicoes, filtroVolumeMetodo, filtroStatusMetodoLicoes]);
+
+  const selectedMethodDoc = useMemo(() => {
+    return (
+      availableMethods.find((m) => m.id === selectedMethodId) ||
+      availableMethods[0] || {
+        id: 'metodo_oficial_orgao_ccb',
+        nome: 'Método de Estudos para Órgão Eletrônico CCB',
+        isOficial: true,
+        categoria: 'Oficial CCB' as const,
+        tipoDivisao: 'volumes' as const,
+      }
+    );
+  }, [availableMethods, selectedMethodId]);
 
   const currentVolumeDef = useMemo(() => {
     return METODOS_ORGANISTA_DATA.find((v) => v.volume === selectedVolumeNum) || METODOS_ORGANISTA_DATA[0];
@@ -805,15 +844,16 @@ export const AlunoDetalhes: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="px-2.5 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-[11px] font-bold text-purple-700 dark:text-purple-400">
-                      Método Oficial CCB &bull; Volumes 1 ao 4
+                    <span className="px-2.5 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-[11px] font-bold text-purple-700 dark:text-purple-400 flex items-center gap-1">
+                      <Music className="w-3 h-3" />
+                      {selectedMethodDoc.isOficial ? 'Método Oficial CCB • Volumes 1 ao 4' : `Método Complementar • ${selectedMethodDoc.categoria}`}
                     </span>
                   </div>
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                    Avaliação do Método de Órgão Eletrônico
+                    {selectedMethodDoc.nome}
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Registre lições por Volume, Página e Lição, e valide os marcos de aptidão para Ensaios, RJM, Culto e Oficialização.
+                    {selectedMethodDoc.subtitulo || 'Acompanhamento de estudos musicais para organistas da CCB.'}
                   </p>
                 </div>
 
@@ -829,44 +869,88 @@ export const AlunoDetalhes: React.FC = () => {
                         : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                     }`}
                   >
-                    Estágio Atual: {stageStatus}
+                    Estágio Geral: {stageStatus}
                   </span>
                 </div>
               </div>
 
-              {/* Volume Selection & Current Position Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Method Selection & Active Position Row */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Method Selector */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Volume em Estudo:
+                    Método em Avaliação:
                   </label>
                   <select
-                    value={selectedVolumeNum}
-                    onChange={(e) => setSelectedVolumeNum(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-xs sm:text-sm font-bold text-slate-900 dark:text-white cursor-pointer shadow-2xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                    value={selectedMethodId}
+                    onChange={(e) => setSelectedMethodId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-600 text-xs sm:text-sm font-bold text-slate-900 dark:text-white cursor-pointer shadow-2xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
                   >
-                    {METODOS_ORGANISTA_DATA.map((vol) => (
-                      <option key={vol.id} value={vol.volume} className="bg-white text-slate-900 dark:bg-slate-800 dark:text-white">
-                        {vol.nome} — {vol.subtitulo}
+                    {availableMethods.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.isOficial ? '★ ' : ''}{m.nome}
                       </option>
                     ))}
                   </select>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    {currentVolumeDef.descricao}
+                  <p className="text-[11px] text-purple-700 dark:text-purple-400 mt-1 font-semibold">
+                    Categoria: {selectedMethodDoc.categoria} {selectedMethodDoc.autor ? `• ${selectedMethodDoc.autor}` : ''}
                   </p>
                 </div>
 
+                {/* Volume Selection (if official) or Description (if custom) */}
+                <div>
+                  {selectedMethodDoc.isOficial ? (
+                    <>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Volume Oficial em Estudo:
+                      </label>
+                      <select
+                        value={selectedVolumeNum}
+                        onChange={(e) => setSelectedVolumeNum(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-xs sm:text-sm font-bold text-slate-900 dark:text-white cursor-pointer shadow-2xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      >
+                        {METODOS_ORGANISTA_DATA.map((vol) => (
+                          <option key={vol.id} value={vol.volume} className="bg-white text-slate-900 dark:bg-slate-800 dark:text-white">
+                            {vol.nome} — {vol.subtitulo}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
+                        {currentVolumeDef.descricao}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                        Estrutura do Método:
+                      </label>
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300 font-semibold">
+                          <span>Divisão: {selectedMethodDoc.tipoDivisao === 'licoes' ? 'Lições / Estudos' : selectedMethodDoc.tipoDivisao === 'paginas' ? 'Páginas' : 'Volumes'}</span>
+                          {selectedMethodDoc.totalItensEstimado && <span>Total: ~{selectedMethodDoc.totalItensEstimado} itens</span>}
+                        </div>
+                        {selectedMethodDoc.descricao && (
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2">
+                            {selectedMethodDoc.descricao}
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Current Position */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    Posição Atual (Calculada das Lições Registradas):
+                    Posição Atual da Aluna:
                   </label>
                   <div className="w-full px-3.5 py-2.5 rounded-xl bg-purple-50/60 dark:bg-slate-800 border border-purple-200 dark:border-slate-700 flex items-center justify-between text-xs sm:text-sm font-bold text-purple-900 dark:text-purple-300">
-                    <span className="flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-purple-600" />
-                      <span>{posicaoMetodo || 'Em início'}</span>
+                    <span className="flex items-center gap-1.5 truncate">
+                      <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                      <span className="truncate">{posicaoMetodo || 'Em início'}</span>
                     </span>
-                    <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                      {metodoLessons.filter((l) => l.status === 'Concluído').length} de {metodoLessons.length} concluídas
+                    <span className="font-mono text-xs text-slate-500 dark:text-slate-400 shrink-0 ml-1">
+                      {metodoLessons.filter((l) => l.status === 'Concluído').length} de {metodoLessons.length} concl.
                     </span>
                   </div>
                 </div>
@@ -1001,7 +1085,7 @@ export const AlunoDetalhes: React.FC = () => {
               </div>
             </div>
 
-            {/* FORM: Registrar Nova Lição (Volume + Página + Lição) */}
+            {/* FORM: Registrar Nova Lição (para o Método Selecionado) */}
             <div className="bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800/80 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 flex items-center justify-center font-bold">
@@ -1009,30 +1093,46 @@ export const AlunoDetalhes: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    Registrar Evolução: Volume + Página + Lição
+                    Registrar Evolução: {selectedMethodDoc.nome}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Adicione o volume, a página e a lição avaliada do Método Oficial de Órgão CCB.
+                    {selectedMethodDoc.isOficial
+                      ? 'Adicione o volume, a página e a lição avaliada do Método Oficial de Órgão CCB.'
+                      : `Adicione a página e lição/estudo avaliado de ${selectedMethodDoc.nome}.`}
                   </p>
                 </div>
               </div>
 
               <form onSubmit={handleAddMethodLesson} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3.5 items-end">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Volume:
-                  </label>
-                  <select
-                    value={novoVolume}
-                    onChange={(e) => setNovoVolume(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-xs sm:text-sm font-bold text-slate-900 dark:text-white shadow-2xs focus:ring-2 focus:ring-purple-500 focus:outline-none cursor-pointer"
-                  >
-                    <option value={1}>Vol. 1 - Iniciação</option>
-                    <option value={2}>Vol. 2 - Desenvolvimento</option>
-                    <option value={3}>Vol. 3 - Articulações</option>
-                    <option value={4}>Vol. 4 - Registro / Expressão</option>
-                  </select>
-                </div>
+                {selectedMethodDoc.isOficial ? (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Volume:
+                    </label>
+                    <select
+                      value={novoVolume}
+                      onChange={(e) => setNovoVolume(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-xs sm:text-sm font-bold text-slate-900 dark:text-white shadow-2xs focus:ring-2 focus:ring-purple-500 focus:outline-none cursor-pointer"
+                    >
+                      <option value={1}>Vol. 1 - Iniciação</option>
+                      <option value={2}>Vol. 2 - Desenvolvimento</option>
+                      <option value={3}>Vol. 3 - Articulações</option>
+                      <option value={4}>Vol. 4 - Registro / Expressão</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Método:
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      value={selectedMethodDoc.nome}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold text-purple-700 dark:text-purple-300 shadow-2xs truncate"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -1051,7 +1151,7 @@ export const AlunoDetalhes: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Lição Nº:
+                    {selectedMethodDoc.tipoDivisao === 'paginas' ? 'Item / Parte:' : 'Lição / Estudo Nº:'}
                   </label>
                   <input
                     type="number"
@@ -1104,7 +1204,7 @@ export const AlunoDetalhes: React.FC = () => {
                     type="text"
                     value={novoTituloLicao}
                     onChange={(e) => setNovoTituloLicao(e.target.value)}
-                    placeholder="Ex: Pedaleira, Dedilhado..."
+                    placeholder="Ex: Dedilhado, Articulação..."
                     className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-xs sm:text-sm text-slate-900 dark:text-white shadow-2xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
                   />
                 </div>
@@ -1129,14 +1229,31 @@ export const AlunoDetalhes: React.FC = () => {
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <Sliders className="w-4 h-4 text-purple-600" />
-                    <span>Lições Avaliadas no Método de Órgão ({metodoLessons.length})</span>
+                    <span>Lições Avaliadas no Método ({metodoLessons.length})</span>
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Acompanhe o domínio de cada lição dos Volumes 1 ao 4, com notas e parecer individual.
+                    Acompanhe o domínio das lições do Método Oficial e métodos complementares cadastrados.
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* Method Filter */}
+                  <select
+                    value={filtroMetodoLicoes}
+                    onChange={(e) => setFiltroMetodoLicoes(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 cursor-pointer"
+                  >
+                    <option value="todos">Todos os Métodos ({metodoLessons.length})</option>
+                    {availableMethods.map((m) => {
+                      const count = metodoLessons.filter((l) => l.metodoId === m.id).length;
+                      return (
+                        <option key={m.id} value={m.id}>
+                          {m.nome} ({count})
+                        </option>
+                      );
+                    })}
+                  </select>
+
                   {/* Volume Filter */}
                   <select
                     value={filtroVolumeMetodo}
@@ -1213,7 +1330,9 @@ export const AlunoDetalhes: React.FC = () => {
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-mono text-xs font-black px-2.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                                Vol. {lesson.volume || 1} &bull; Pág. {lesson.numeroPagina} &bull; Lição {lesson.numeroLicao}
+                                {lesson.metodoNome && lesson.metodoId !== 'metodo_oficial_orgao_ccb'
+                                  ? `${lesson.metodoNome} • Pág. ${lesson.numeroPagina} • Estudo ${lesson.numeroLicao}`
+                                  : `Vol. ${lesson.volume || 1} • Pág. ${lesson.numeroPagina} • Lição ${lesson.numeroLicao}`}
                               </span>
 
                               {lesson.titulo && (

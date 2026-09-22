@@ -45,18 +45,55 @@ export interface InstrumentoMetodosConfig {
   };
 }
 
+export type MetodoCategoria =
+  | 'Oficial CCB'
+  | 'Técnica e Dedilhado'
+  | 'Pedaleira'
+  | 'Teoria e Solfejo'
+  | 'Repertório Complementar'
+  | 'Outro';
+
+export type MetodoTipoDivisao = 'volumes' | 'licoes' | 'paginas';
+
+export type MetodoEstagioSugerido =
+  | 'Iniciante'
+  | 'RJM / Ensaio'
+  | 'Culto Oficial'
+  | 'Oficialização'
+  | 'Livre / Todos os Níveis';
+
+export interface MetodoCadastradoDoc {
+  id: string;
+  nome: string; // Ex: "Burgmüller Op. 100"
+  subtitulo?: string; // Ex: "25 Estudos Fáceis e Progressivos"
+  autor?: string; // Ex: "Friedrich Burgmüller"
+  categoria: MetodoCategoria;
+  descricao?: string;
+  tipoDivisao: MetodoTipoDivisao;
+  totalItensEstimado?: number;
+  estagioSugerido?: MetodoEstagioSugerido;
+  isOficial?: boolean;
+  criadoPor?: {
+    uid: string;
+    nome: string;
+    role: string;
+  };
+  createdAt?: any;
+  updatedAt?: any;
+}
+
 export interface MetodoLicaoDoc {
-  id: string; // ex: "v1_p15_l3"
+  id: string; // ex: "v1_p15_l3" ou "burgmuller_p5_l2"
   studentId: string;
   metodoId: string;
   metodoNome: string;
-  volume: number; // 1, 2, 3 ou 4
+  volume?: number; // 1, 2, 3 ou 4 (opcional para métodos sem volumes)
   numeroPagina: number; // Página, ex: 15
-  numeroLicao: number;  // Lição, ex: 3
-  titulo?: string;       // Opcional: ex: "Exercício de Tercinas"
+  numeroLicao: number;  // Lição ou Exercício, ex: 3
+  titulo?: string;       // Opcional: ex: "A Candura", "Exercício de Tercinas"
   status: MetodoLicaoStatus;
   progress: number;      // 0 - 100%
-  teacherNotes?: string; // Parecer / orientação pedagógica da instrutora
+  teacherNotes?: string; // Parecer / orientação pedagógica da instrutora ou examinadora
   evaluatedAt?: string; // Data da avaliação (YYYY-MM-DD)
   startedAt?: any;
   completedAt?: any;

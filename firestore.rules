@@ -8,6 +8,8 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in [
           'admin', 'Admin', 'ADMIN', 
+          'examinadora', 'Examinadora', 'EXAMINADORA',
+          'examinador', 'Examinador', 'EXAMINADOR',
           'instrutora', 'Instrutora', 'INSTRUTORA',
           'instrutor', 'Instrutor', 'INSTRUTOR', 
           'professor', 'Professor', 'PROFESSOR'
@@ -75,6 +77,12 @@ service cloud.firestore {
     // Write: ONLY Teachers or Admins
     match /students/{userId}/method_progress/{document=**} {
       allow read: if isOwner(userId) || isTeacherOrAdmin();
+      allow write: if isTeacherOrAdmin();
+    }
+
+    // Custom / Supplementary Methods registered by Examinadoras and Teachers
+    match /custom_methods/{methodId} {
+      allow read: if request.auth != null;
       allow write: if isTeacherOrAdmin();
     }
   }

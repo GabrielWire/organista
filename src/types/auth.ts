@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'instrutora' | 'aluna' | 'instrutor' | 'aluno' | 'professor';
+export type UserRole = 'admin' | 'examinadora' | 'examinador' | 'instrutora' | 'aluna' | 'instrutor' | 'aluno' | 'professor';
 
 export type InstrumentoOficial = string;
 

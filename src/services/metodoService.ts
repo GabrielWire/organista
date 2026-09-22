@@ -14,7 +14,207 @@ import type {
   MetodoLicaoDoc,
   MetodoLicaoStatus,
   MetodoEstagioStatus,
+  MetodoCadastradoDoc,
 } from '../types/metodo';
+
+/**
+ * Standard default catalog of methods available for CCB organists.
+ * Includes the core Official CCB Method (Vol. 1 ao 4) and standard supplementary methods
+ * (Burgmüller, Hanon, Czerny, Pozzoli, Pedaleira, Beyer).
+ */
+export const DEFAULT_METHODS_CATALOG: MetodoCadastradoDoc[] = [
+  {
+    id: 'metodo_oficial_orgao_ccb',
+    nome: 'Método de Estudos para Órgão Eletrônico CCB',
+    subtitulo: 'Volumes 1 ao 4 - Grade Oficial para Organistas da CCB',
+    autor: 'Congregação Cristã no Brasil',
+    categoria: 'Oficial CCB',
+    descricao:
+      'Método base e obrigatório para os marcos eclesiásticos da CCB: Iniciação, Reunião de Jovens, Culto Oficial e Oficialização.',
+    tipoDivisao: 'volumes',
+    totalItensEstimado: 4,
+    estagioSugerido: 'Oficialização',
+    isOficial: true,
+  },
+  {
+    id: 'burgmuller_op100',
+    nome: 'Burgmüller Op. 100',
+    subtitulo: '25 Estudos Fáceis e Progressivos',
+    autor: 'Friedrich Burgmüller',
+    categoria: 'Técnica e Dedilhado',
+    descricao:
+      'Estudos melódicos fundamentais para desenvolvimento de fraseado, dinâmica e agilidade digital (ex: A Candura, Pastoral, Inquietude).',
+    tipoDivisao: 'licoes',
+    totalItensEstimado: 25,
+    estagioSugerido: 'RJM / Ensaio',
+    isOficial: false,
+  },
+  {
+    id: 'hanon_virtuoso',
+    nome: 'C. L. Hanon - O Pianista Virtuoso',
+    subtitulo: '60 Exercícios Preparatórios de Agilidade e Dedos Iguais',
+    autor: 'Charles-Louis Hanon',
+    categoria: 'Técnica e Dedilhado',
+    descricao:
+      'Exercícios essenciais de aquecimento diário, independência do 4º e 5º dedos, firmeza e articulação precisa das mãos.',
+    tipoDivisao: 'licoes',
+    totalItensEstimado: 60,
+    estagioSugerido: 'Livre / Todos os Níveis',
+    isOficial: false,
+  },
+  {
+    id: 'czerny_op599',
+    nome: 'Czerny Op. 599',
+    subtitulo: 'Primeiro Mestre de Piano / Teclado',
+    autor: 'Carl Czerny',
+    categoria: 'Técnica e Dedilhado',
+    descricao:
+      'Exercícios clássicos progressivos de leitura simultânea em claves de Sol e Fá, escalas, acordes e precisão métrica.',
+    tipoDivisao: 'licoes',
+    totalItensEstimado: 100,
+    estagioSugerido: 'Iniciante',
+    isOficial: false,
+  },
+  {
+    id: 'pedaleira_florencio',
+    nome: 'Estudos de Pedaleira para Órgão',
+    subtitulo: 'Independência dos Pés, Ponta e Calcanhar',
+    autor: 'Repertório Sacro para Órgão',
+    categoria: 'Pedaleira',
+    descricao:
+      'Exercícios práticos para domínio do pedalier de órgão: ponta, calcanhar, substituição de pés e execução de baixos contínuos.',
+    tipoDivisao: 'licoes',
+    totalItensEstimado: 20,
+    estagioSugerido: 'RJM / Ensaio',
+    isOficial: false,
+  },
+  {
+    id: 'pozzoli_solfejo',
+    nome: 'Pozzoli - Guia Teórico-Prático',
+    subtitulo: 'Ditados e Solfejos Rítmicos e Melódicos',
+    autor: 'Ettore Pozzoli',
+    categoria: 'Teoria e Solfejo',
+    descricao:
+      'Desenvolvimento do ritmo, percepção auditiva e solfejo em compassos simples e compostos, reforçando os estudos do MSA.',
+    tipoDivisao: 'licoes',
+    totalItensEstimado: 40,
+    estagioSugerido: 'Iniciante',
+    isOficial: false,
+  },
+  {
+    id: 'beyer_op101',
+    nome: 'F. Beyer Op. 101',
+    subtitulo: 'Escola Preliminar para Teclado e Órgão',
+    autor: 'Ferdinand Beyer',
+    categoria: 'Técnica e Dedilhado',
+    descricao:
+      'Método tradicional com lições melódicas elementares para firmeza de toque e primeiras noções de acompanhamento.',
+    tipoDivisao: 'licoes',
+    totalItensEstimado: 106,
+    estagioSugerido: 'Iniciante',
+    isOficial: false,
+  },
+];
+
+/**
+ * Lists all available methods in the system.
+ * Merges Firestore custom methods (`custom_methods` collection) with default catalog.
+ * Custom methods saved in Firestore take priority.
+ */
+export async function listAllAvailableMethods(): Promise<MetodoCadastradoDoc[]> {
+  try {
+    const colRef = collection(db, 'custom_methods');
+    const snap = await getDocs(colRef);
+
+    const firestoreMethods: MetodoCadastradoDoc[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as MetodoCadastradoDoc;
+      firestoreMethods.push({ ...data, id: d.id });
+    });
+
+    // Map by ID
+    const mergedMap = new Map<string, MetodoCadastradoDoc>();
+
+    // Add defaults first
+    DEFAULT_METHODS_CATALOG.forEach((m) => {
+      mergedMap.set(m.id, m);
+    });
+
+    // Merge / overwrite with Firestore
+    firestoreMethods.forEach((m) => {
+      mergedMap.set(m.id, m);
+    });
+
+    const allMethods = Array.from(mergedMap.values());
+
+    // Sort: Official CCB first, then custom/supplementary by name
+    return allMethods.sort((a, b) => {
+      if (a.isOficial && !b.isOficial) return -1;
+      if (!a.isOficial && b.isOficial) return 1;
+      return a.nome.localeCompare(b.nome);
+    });
+  } catch (err) {
+    console.warn('Falha ao carregar custom_methods do Firestore, usando catálogo padrão:', err);
+    return DEFAULT_METHODS_CATALOG;
+  }
+}
+
+/**
+ * Registers a new custom method created by an Examinadora, Instrutora or Admin.
+ */
+export async function createCustomMethod(
+  methodData: Omit<MetodoCadastradoDoc, 'id'>,
+  customId?: string
+): Promise<MetodoCadastradoDoc> {
+  const cleanId =
+    customId ||
+    methodData.nome
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 40) + `_${Date.now().toString().slice(-4)}`;
+
+  const docRef = doc(db, 'custom_methods', cleanId);
+  const newDoc: MetodoCadastradoDoc = {
+    ...methodData,
+    id: cleanId,
+    isOficial: false,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  await setDoc(docRef, newDoc);
+  return newDoc;
+}
+
+/**
+ * Updates an existing custom method.
+ */
+export async function updateCustomMethod(
+  methodId: string,
+  methodData: Partial<MetodoCadastradoDoc>
+): Promise<void> {
+  const docRef = doc(db, 'custom_methods', methodId);
+  await setDoc(
+    docRef,
+    {
+      ...methodData,
+      id: methodId,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * Deletes a custom method.
+ */
+export async function deleteCustomMethod(methodId: string): Promise<void> {
+  const docRef = doc(db, 'custom_methods', methodId);
+  await deleteDoc(docRef);
+}
 
 export function calculateMethodStage(estagios: {
   rjm: boolean;
@@ -28,7 +228,7 @@ export function calculateMethodStage(estagios: {
 }
 
 /**
- * Retrieves the current organ method progress for a student.
+ * Retrieves the current organ method progress summary for a student.
  */
 export async function getStudentMethodProgress(studentId: string): Promise<AlunoMetodoProgressoDoc | null> {
   const docRef = doc(db, 'students', studentId, 'method_progress', 'current');
@@ -38,18 +238,26 @@ export async function getStudentMethodProgress(studentId: string): Promise<Aluno
 }
 
 /**
- * Lists all lessons registered for a student's organ method.
+ * Lists all lessons registered for a student's organ methods.
+ * Can be optionally filtered by metodoId.
  * Ordered by volume asc, page asc, then lesson number asc.
  */
-export async function listStudentMethodLessons(studentId: string): Promise<MetodoLicaoDoc[]> {
+export async function listStudentMethodLessons(
+  studentId: string,
+  metodoIdFilter?: string
+): Promise<MetodoLicaoDoc[]> {
   const colRef = collection(db, 'students', studentId, 'method_progress', 'current', 'lessons');
   const snap = await getDocs(colRef);
-  const lessons: MetodoLicaoDoc[] = [];
+  let lessons: MetodoLicaoDoc[] = [];
 
   snap.forEach((d) => {
     const data = d.data() as MetodoLicaoDoc;
     lessons.push({ ...data, id: d.id });
   });
+
+  if (metodoIdFilter && metodoIdFilter !== 'todos') {
+    lessons = lessons.filter((l) => l.metodoId === metodoIdFilter);
+  }
 
   return lessons.sort((a, b) => {
     const volA = a.volume || 1;
@@ -61,7 +269,8 @@ export async function listStudentMethodLessons(studentId: string): Promise<Metod
 }
 
 /**
- * Saves or updates a specific method lesson (Volume + Page + Lesson).
+ * Saves or updates a specific method lesson.
+ * Supports multi-method keys (e.g. burgmuller_op100_v1_p5_l3 or v1_pag_15_lic_3).
  * Automatically calculates latest student position and syncs users/{studentId}.
  */
 export async function saveStudentMethodLesson(
@@ -83,7 +292,9 @@ export async function saveStudentMethodLesson(
   const vol = Math.min(4, Math.max(1, Number(lessonData.volume) || 1));
   const pag = Math.max(1, Number(lessonData.numeroPagina) || 1);
   const lic = Math.max(1, Number(lessonData.numeroLicao) || 1);
-  const lessonId = lessonData.id || `v${vol}_pag_${pag}_lic_${lic}`;
+
+  const cleanMetodoKey = (lessonData.metodoId || 'metodo_oficial_orgao_ccb').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const lessonId = lessonData.id || `${cleanMetodoKey}_v${vol}_pag_${pag}_lic_${lic}`;
 
   const docRef = doc(db, 'students', studentId, 'method_progress', 'current', 'lessons', lessonId);
   const snap = await getDoc(docRef);
@@ -158,7 +369,12 @@ async function syncMethodSummaryFromLessons(
     latestVol = target.volume || 1;
     latestPag = target.numeroPagina;
     latestLic = target.numeroLicao;
-    posicaoString = `Vol. ${latestVol} - Página ${latestPag}, Lição ${latestLic}`;
+
+    if (target.metodoId === 'metodo_oficial_orgao_ccb' || !target.metodoId) {
+      posicaoString = `Vol. ${latestVol} - Página ${latestPag}, Lição ${latestLic}`;
+    } else {
+      posicaoString = `${target.metodoNome} - Pág. ${latestPag}, Lição ${latestLic}`;
+    }
   } else if (currentSummary?.posicaoAtual) {
     posicaoString = currentSummary.posicaoAtual;
     latestVol = currentSummary.volumeAtual || 1;
