@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to verify if user is admin or teacher/instructor
+    function isTeacherOrAdmin() {
+      return request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in [
+          'admin', 'Admin', 'ADMIN', 
+          'instrutora', 'Instrutora', 'INSTRUTORA',
+          'instrutor', 'Instrutor', 'INSTRUTOR', 
+          'professor', 'Professor', 'PROFESSOR'
+        ]);
+    }
+
+    function isAdmin() {
+      return request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'Admin', 'ADMIN']);
+    }
+
+    // Helper function to verify if authenticated user matches document owner
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isTeacherOrAdmin();
+      allow create: if isAdmin() || (isTeacherOrAdmin() && request.resource.data.role in ['aluna', 'aluno']);
+      allow delete: if isAdmin();
+      
+      // Updates:
+      // - Teachers/Admins can update any field (including role, totals, MSA aggregates, Method aggregates, assigned instructor)
+      // - Students can ONLY update allowed profile fields (name, phone, instrument, hymn aggregates),
+      //   never role, email, uid, or MSA/Method official aggregates or assigned instructor
+      allow update: if isTeacherOrAdmin() || (
+        isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'role', 'email', 'uid', 'createdAt',
+          'instruments',
+          'instrutorId', 'instrutorNome', 'instrutorEmail', 'instrutorTelefone',
+          'msaCurrentPhaseId', 'msaCurrentPhaseName', 'msaCurrentPhaseOrder',
+          'msaGeneralProgress', 'msaLessonsCompleted', 'msaTotalLessons',
+          'metodoNome', 'metodoVolume', 'metodoPosicao', 'metodoProgresso', 'metodoEstagioApto'
+        ])
+      );
+    }
+
+    // Student Hymn Progress Subcollection: students/{userId}/progress/{hinoId}
+    match /students/{userId}/progress/{hinoId} {
+      allow read: if isOwner(userId) || isTeacherOrAdmin();
+      allow write: if isOwner(userId) || isTeacherOrAdmin();
+    }
+
+    // MSA Content: Phases and Lessons
+    // Read: Any authenticated user (admins, teachers, students)
+    // Write: Admin or Teacher
+    match /msa_phases/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if isTeacherOrAdmin();
+    }
+
+    // Student MSA Progress Subcollection: students/{userId}/msa_progress/{document=**}
+    // Read: Student reads own progress, teachers/admins read any student's progress
+    // Write: ONLY Teachers or Admins (official pedagogical grading cannot be altered by student)
+    match /students/{userId}/msa_progress/{document=**} {
+      allow read: if isOwner(userId) || isTeacherOrAdmin();
+      allow write: if isTeacherOrAdmin();
+    }
+
+    // Student Instrument Method Progress Subcollection: students/{userId}/method_progress/{document=**}
+    // Read: Student reads own progress, teachers/admins read any student's method progress
+    // Write: ONLY Teachers or Admins
+    match /students/{userId}/method_progress/{document=**} {
+      allow read: if isOwner(userId) || isTeacherOrAdmin();
+      allow write: if isTeacherOrAdmin();
+    }
+  }
+}
