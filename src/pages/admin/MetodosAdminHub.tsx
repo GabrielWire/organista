@@ -170,8 +170,8 @@ export const MetodosAdminHub: React.FC = () => {
           criadoPor: currentUser
             ? {
                 uid: currentUser.uid,
-                nome: currentUser.displayName || 'Examinadora / Instrutora',
-                role: role || 'examinadora',
+                nome: currentUser.displayName || (role === 'admin' ? 'Administradora' : 'Instrutora'),
+                role: role || 'instrutora',
               }
             : undefined,
         });
@@ -301,7 +301,7 @@ export const MetodosAdminHub: React.FC = () => {
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-[11px] font-bold text-purple-700 dark:text-purple-400 flex items-center gap-1 uppercase tracking-wider">
               <Music className="w-3 h-3" />
-              Gestão de Métodos &bull; Examinadoras &amp; Instrutoras
+              Gestão de Métodos &bull; Instrutoras &amp; Administradoras
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2.5">
